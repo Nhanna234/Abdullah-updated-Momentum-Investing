@@ -130,8 +130,8 @@ function Settings({ open, close, draft, update, params, setParams, config }) {
 
 function App() {
   const [config, setConfig] = useState({ indices: INDEXES, latest: '2026-10' })
-  const [mode, setMode] = useState('backtest')
-  const [draft, setDraft] = useState({ index: 'Quality Stocks', first: '2025-01', last: '2026-10', cost: .4, rf: 6.5 })
+  const [mode, setMode] = useState('present')
+  const [draft, setDraft] = useState({ index: 'Nifty Total Market', first: '2025-01', last: '2026-10', cost: .4, rf: 6.5 })
   const [params, setParams] = useState(PARAMS)
   const [settings, setSettings] = useState(false)
   const [mobileNav, setMobileNav] = useState(false)
