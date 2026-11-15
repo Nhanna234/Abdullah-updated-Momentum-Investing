@@ -4,6 +4,7 @@ import io
 import json
 import time
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,9 @@ INDEX_FILES = {
     "Nifty Microcap 250": "ind_niftymicrocap250_list.csv",
     "Nifty Total Market": "ind_niftytotalmarket_list.csv",
 }
+
+CONSTITUENT_SNAPSHOTS = Path(__file__).resolve().parent / "constituents"
+CONSTITUENT_SNAPSHOT_DATE = "15 Nov 2026"
 
 CONSTITUENT_MIRRORS = ["https://niftyindices.com/IndexConstituent/{f}",
                        "https://www.niftyindices.com/IndexConstituent/{f}",
@@ -82,6 +86,10 @@ def load_constituents(index_name: str) -> tuple[pd.DataFrame, str]:
             return _parse_constituents(pd.read_csv(io.StringIO(r.text))), url
         except Exception as e:  # noqa: BLE001
             errors.append(f"{url}: {e}")
+    snapshot = CONSTITUENT_SNAPSHOTS / fname
+    if snapshot.is_file():
+        return (_parse_constituents(pd.read_csv(snapshot)),
+                f"bundled NSE snapshot, {CONSTITUENT_SNAPSHOT_DATE}")
     raise RuntimeError("Could not download the constituent list. Upload it from the sidebar.\n"
                        + "\n".join(errors))
 
