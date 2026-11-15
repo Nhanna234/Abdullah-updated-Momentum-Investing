@@ -15,7 +15,7 @@ Open http://127.0.0.1:8765. The server listens on this computer only. For Vite d
 
 Select **Quality Stocks** for the built-in quarterly history, or upload an effective-date CSV under **Settings**. Uploaded history overrides the built-in history. Use `YYYY-MM-DD` column headers and put one ticker per cell. Chartink historical snapshots can repaint. The first backtest or holdings calculation can take a few minutes while prices download.
 
-The original Streamlit interface is also available with `python -m streamlit run app.py`. Both interfaces import the strategy engine in `engine.py`.
+Run `python -m streamlit run app.py` to use the React dashboard through Streamlit. On Community Cloud, use `app.py` as the entry point and commit the built `frontend/dist` assets after changing the frontend. The legacy interface is available locally with `python -m streamlit run streamlit_legacy.py`. Both interfaces share `engine.py`.
 
 ## Deploy on Render
 

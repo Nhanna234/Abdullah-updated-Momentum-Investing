@@ -42,7 +42,9 @@ def load_universe(body, index):
         quality = load_quality_history()
         const = e._parse_constituents(pd.read_csv(QUALITY_CSV))
     else:
-        const, _ = e.load_constituents(index)
+        const, source = e.load_constituents(index)
+        if source.startswith("bundled NSE snapshot"):
+            notices.append(f"{index} is using the {source}.")
     if body.get("history"):
         source = input_csv(body["history"])
         headers = pd.read_csv(source, nrows=0).columns
@@ -189,6 +191,11 @@ def export_report(body):
     return {"xlsx": base64.b64encode(output.getvalue()).decode("ascii")}
 
 
+def dashboard_config():
+    return {"indices": INDEXES, "latest": str(e.last_completed_month()),
+            "params": DEFAULTS, "keep": e.DEFAULT_KEEP}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(DIST), **kwargs)
@@ -206,8 +213,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/health":
             self.reply({"status": "ok"})
         elif path == "/api/config":
-            self.reply({"indices": INDEXES, "latest": str(e.last_completed_month()),
-                        "params": DEFAULTS, "keep": e.DEFAULT_KEEP})
+            self.reply(dashboard_config())
         else:
             super().do_GET()
 
