@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: momentum-lab
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: QUALITY_STOCKS_AUTO_REFRESH
+        value: "0"
