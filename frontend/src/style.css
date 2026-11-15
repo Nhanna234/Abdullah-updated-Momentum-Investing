@@ -1,6 +1,9 @@
 :root{font-family:"DM Sans",sans-serif;color:#18352b;background:#f3f6f3;font-synthesis:none;--forest:#102a24;--green:#08785b;--muted:#64766e;--border:#dce6df;--panel:#fff;--heading:"Geist",sans-serif}
 *{box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
 body{margin:0;min-width:320px}
+/* Streamlit's iframe requires a scrollable container inside the dashboard. */
+#root{height:100%;overflow-y:auto}
 button,input,textarea,select{font:inherit}
 button{cursor:pointer}
 button:disabled{cursor:wait;opacity:.63}
