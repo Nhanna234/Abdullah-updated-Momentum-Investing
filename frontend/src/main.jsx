@@ -21,7 +21,7 @@ const HERO = {
   present: ['Present holdings', 'Review your portfolio, current ranks, and pending orders.'],
   rules: ['Strategy rules', 'Every rule the screener applies, and the reasoning behind each one.'],
 }
-const PALETTE = { Strategy: '#087d61', 'Nifty 50': '#8d9d96', 'Nifty 500': '#c49549', 'Equal-weight universe': '#788ab8' }
+const PALETTE = { Strategy: '#16191B', 'Nifty 50': '#9AA09B', 'Nifty 500': '#24405E', 'Equal-weight universe': '#8A7B4F' }
 const DEMO_SERIES = [100, 102, 98, 105, 110, 109, 117, 114, 124, 128, 123, 134, 139, 136, 143, 151, 147, 155, 159, 153, 166, 172, 178]
 const DEMO_GROWTH = DEMO_SERIES.map((value, i) => ({
   Month: new Date(Date.UTC(2024, 11 + i, 1)).toISOString().slice(0, 7),
@@ -68,10 +68,44 @@ function Table({ rows, columns }) {
     <tbody>{rows.map((row, i) => <tr key={i}>{keys.map(key => <td key={key}>{format(row[key], key === 'Metric' ? key : row.Metric || key)}</td>)}</tr>)}</tbody>
   </table></div>
 }
-function Card({ icon: Icon, label, value, note, tone = '' }) {
-  return <article className="metric"><div className="metric-top"><span>{label}</span><div className={'metric-icon ' + tone}><Icon size={17}/></div></div>
-    <strong>{value}</strong><small>{note || ' '}</small></article>
+function Card({ label, value, note }) {
+  const dir = typeof value === 'string' && (value.startsWith('+') ? 'up' : /^[-\u2212]/.test(value) ? 'down' : '')
+  return <article className="metric"><span className="metric-label">{label}</span>
+    <strong className={dir}>{value}</strong>{note && <small>{note}</small>}</article>
 }
+
+// Ranks 1..threshold with the two zones drawn as bands. Position on the ladder is the
+// information: which leaders you own, which you do not, and what is near the edge.
+function RankLadder({ ranks, holdings, topN, threshold }) {
+  const held = new Map((holdings || []).map(row => [row.Symbol, row]))
+  const rows = (ranks || []).filter(row => row.Rank <= threshold)
+  if (!rows.length) return null
+  const widest = Math.max(...[...held.values()].map(row => row.Weight || 0), .01)
+  return <section className="panel">
+    <div className="panel-head"><div><h2>Rank ladder</h2>
+      <p>Every stock the rules can act on this month, in rank order.</p></div></div>
+    <ol className="ladder">
+      {rows.map(row => {
+        const own = held.get(row.Symbol)
+        return <React.Fragment key={row.Symbol}>
+          {row.Rank === topN + 1 && <li className="zonedivider">
+            <span>Buy zone ends. Ranks below are kept if already held, never bought.</span></li>}
+          <li className={(own ? 'own ' : '') + (row.Rank <= topN ? 'buy' : 'hold')}>
+            <span className="rk">{row.Rank}</span>
+            <span className="tk">{row.Symbol}</span>
+            <span className="sc">{pct(row.Score, true)}</span>
+            <span className={own ? 'rt ' + (own.Return >= 0 ? 'up' : 'down') : 'rt none'}>
+              {own ? pct(own.Return, true) : '—'}</span>
+            <span className="wt">{own && <i style={{ width: Math.max(5, own.Weight / widest * 100) + '%' }}/>}</span>
+          </li>
+        </React.Fragment>
+      })}
+    </ol>
+    <div className="ladder-key"><span><b>{held.size}</b> of {topN} slots filled</span>
+      <span>Third column is the momentum score</span><span>Bar shows position size</span></div>
+  </section>
+}
+
 function Panel({ title, hint, children }) {
   return <section className="panel"><div className="panel-head"><div><h2>{title}</h2>{hint && <p>{hint}</p>}</div></div>{children}</section>
 }
@@ -83,15 +117,15 @@ function PerformanceChart({ report, demo }) {
   const keys = Object.keys(PALETTE).filter(key => key in (rows[0] || {}))
   const label = kind === 'growth' ? 'Growth of ₹100' : 'Drawdown'
   return <section className="panel chart-panel">
-    <div className="panel-head"><div><h2>{label}</h2><p>{demo ? 'Illustrative data · run a backtest to see your results' : 'Month-end portfolio performance and benchmarks'}</p></div>
+    <div className="panel-head"><div><h2>{label}</h2><p>{demo ? 'Illustrative data, run a backtest to see your results' : 'Month-end portfolio performance and benchmarks'}</p></div>
       <div className="segmented">{['growth', 'drawdown'].map(key => <button type="button" key={key} className={kind === key ? 'active' : ''} onClick={() => setKind(key)}>{key === 'growth' ? 'Growth' : 'Drawdown'}</button>)}</div></div>
     <div className="legend">{keys.map(key => <button type="button" key={key} aria-pressed={!hidden.includes(key)} className={hidden.includes(key) ? 'muted' : ''} onClick={() => setHidden(old => old.includes(key) ? old.filter(k => k !== key) : [...old, key])}><i style={{ background: PALETTE[key] }}/>{key}</button>)}</div>
     <div className="plot"><ResponsiveContainer width="100%" height="100%">
       <Chart data={rows} margin={{ left: -12, top: 14, right: 20, bottom: 4 }}>
-        <CartesianGrid stroke="#e4ebe7" vertical={false} strokeDasharray="4 4"/>
-        <XAxis dataKey="Month" tickFormatter={month} tickLine={false} axisLine={false} minTickGap={34} tick={{fill:'#677972',fontSize:11}} tickMargin={12}/>
-        <YAxis tickFormatter={kind === 'drawdown' ? pct : v => '₹' + num(v, 0)} tickLine={false} axisLine={false} tick={{fill:'#677972',fontSize:11}} width={64} domain={kind === 'drawdown' ? ['auto', 0] : ['auto','auto']}/>
-        <Tooltip labelFormatter={month} formatter={value => kind === 'growth' ? '₹' + num(value) : pct(value)} contentStyle={{border:'1px solid #e1e8e4',borderRadius:12}}/>
+        <CartesianGrid stroke="#E6E8E2" vertical={false} strokeDasharray="3 4"/>
+        <XAxis dataKey="Month" tickFormatter={month} tickLine={false} axisLine={false} minTickGap={34} tick={{fill:'#636A6D',fontSize:11,fontFamily:'IBM Plex Mono'}} tickMargin={12}/>
+        <YAxis tickFormatter={kind === 'drawdown' ? pct : v => '₹' + num(v, 0)} tickLine={false} axisLine={false} tick={{fill:'#636A6D',fontSize:11,fontFamily:'IBM Plex Mono'}} width={64} domain={kind === 'drawdown' ? ['auto', 0] : ['auto','auto']}/>
+        <Tooltip labelFormatter={month} formatter={value => kind === 'growth' ? '₹' + num(value) : pct(value)} contentStyle={{border:'1px solid #D3D6CF',borderRadius:3,fontFamily:'IBM Plex Mono',fontSize:12}}/>
         {keys.filter(key => !hidden.includes(key)).map(key => <Line key={key} type="linear" dataKey={key} stroke={PALETTE[key]} strokeWidth={key === 'Strategy' ? 3 : 2} dot={false} activeDot={{r:4}} isAnimationActive={false}/>)}
       </Chart>
     </ResponsiveContainer></div>
@@ -216,14 +250,14 @@ function App() {
   return <div className="shell">
     {mobileNav && <button type="button" className="nav-shade" aria-label="Close navigation" onClick={() => setMobileNav(false)}/>}
     <aside className={'sidebar ' + (mobileNav ? 'shown' : '')}>
-      <div className="brand"><div className="brand-icon"><TrendingUp size={23} strokeWidth={2.4}/></div><div><strong>Momentum Lab</strong><small>RESEARCH TERMINAL</small></div></div>
-      <div className="nav-label">WORKSPACE</div>
+      <div className="brand"><div className="brand-icon"><TrendingUp size={23} strokeWidth={2.4}/></div><div><strong>Momentum Lab</strong><small>Research terminal</small></div></div>
+      <div className="nav-label">Workspace</div>
       <nav>
         <button type="button" className={mode === 'backtest' ? 'selected' : ''} onClick={() => switchMode('backtest')}><BarChart3 size={19}/>Backtest<ArrowRight className="nav-arrow" size={15}/></button>
         <button type="button" className={mode === 'present' ? 'selected' : ''} onClick={() => switchMode('present')}><BriefcaseBusiness size={19}/>Present holdings<ArrowRight className="nav-arrow" size={15}/></button>
         <button type="button" className={mode === 'rules' ? 'selected' : ''} onClick={() => switchMode('rules')}><BookOpen size={19}/>Rules<ArrowRight className="nav-arrow" size={15}/></button>
       </nav>
-      <div className="nav-label secondary">CONFIGURATION</div>
+      <div className="nav-label secondary">Configuration</div>
       <nav><button type="button" onClick={() => { setSettings(true); setMobileNav(false) }}><Settings2 size={19}/>Strategy settings</button></nav>
       <div className="sidebar-foot"><div className="exchange-icon"><Activity size={17}/></div><div><strong>NSE equities</strong><small>Monthly rebalance</small></div></div>
     </aside>
@@ -233,13 +267,10 @@ function App() {
         <span>Workspace</span><span className="slash">/</span><strong>{VIEWS[mode]}</strong></div>
         <button type="button" className="secondary-button small" onClick={() => setSettings(true)}><Settings2 size={16}/> Settings</button></header>
       <div className="content">
-        <section className="hero">
-          <div className="hero-copy"><div className="hero-label"><span/> RELATIVE MOMENTUM</div>
-            <h1>{HERO[mode][0]}</h1>
-            <p>{HERO[mode][1]}</p>
-          </div>
-          <div className="hero-mark" aria-hidden="true"><LineChart size={136} strokeWidth={.65}/></div>
-          <div className="hero-badge"><CalendarDays size={15}/><span>Latest completed month<strong>{month(config.latest)}</strong></span></div>
+        <section className="statusband">
+          <div><h1>{HERO[mode][0]}</h1><p>{HERO[mode][1]}</p></div>
+          <div className="sb-month"><span>Signal month</span><strong>{month(config.latest)}</strong>
+            <small>Last completed monthly bar</small></div>
         </section>
 
         {mode !== 'rules' && <form className="controls" onSubmit={submit}>
@@ -255,7 +286,7 @@ function App() {
 
         {mode === 'rules' ? <Manual params={params} draft={draft}/> : mode === 'backtest' ? <>
           <div className="section-header">
-            <div><h2>Performance overview</h2><p>{demo ? 'Illustrative preview' : [result.index, month(result.range[0]) + ' – ' + month(result.range[1])].join(' · ')}</p></div>
+            <div><h2>Performance overview</h2><p>{demo ? 'Illustrative preview' : result.index + ', ' + month(result.range[0]) + ' to ' + month(result.range[1])}</p></div>
             {!demo && <div className="overview-actions">
               <div className="segmented">{['net','gross'].map(key => <button type="button" className={basis === key ? 'active' : ''} key={key} onClick={() => setBasis(key)}>{key === 'net' ? 'Net' : 'Gross'}</button>)}</div>
               <button type="button" className="secondary-button" disabled={exporting} onClick={download}><ArrowDownToLine size={16}/>{exporting ? 'Exporting…' : 'Export'}</button>
@@ -274,14 +305,15 @@ function App() {
             <details className="panel details"><summary>Trade statistics</summary><Table rows={report.tradeMetrics}/></details>
           </div>}
         </> : result ? <>
-          <div className="section-header"><div><h2>Portfolio overview</h2><p>{result.index} · Prices as of {result.asOf}</p></div></div>
+          <div className="section-header"><div><h2>Portfolio overview</h2><p>{result.index}, priced {result.asOf}</p></div></div>
           <div className="metrics"><Card icon={TrendingUp} label="Portfolio value" value={inr(result.value)} note="Marked to market"/><Card icon={Database} label="Cash" value={inr(result.cash)} note="Includes cash reserved for pending orders"/><Card icon={BriefcaseBusiness} label="Stocks held" value={result.holdings.length}/><Card icon={Activity} label="Pending buy-stops" value={result.pending.length} tone="amber"/></div>
-          <Panel title="Current holdings"><Table rows={result.holdings}/></Panel>
-          <div className="two-panels"><Panel title="Pending orders"><Table rows={result.pending}/></Panel><Panel title="Current rankings"><Table rows={result.ranks}/></Panel></div>
-          <Panel title="Latest exits"><Table rows={result.exits}/></Panel>
+          <RankLadder ranks={result.ranks} holdings={result.holdings} topN={params.top_n} threshold={params.threshold}/>
+          <Panel title="Position detail"><Table rows={result.holdings}/></Panel>
+          <div className="two-panels"><Panel title="Pending orders"><Table rows={result.pending}/></Panel><Panel title="Latest exits"><Table rows={result.exits}/></Panel></div>
+          <details className="panel details"><summary>Full ranking</summary><Table rows={result.ranks}/></details>
           <Panel title="Latest candidate decisions"><Table rows={result.decisions}/></Panel>
         </> : <Panel title="Portfolio overview" hint="Run present holdings to populate your portfolio and pending orders."><div className="empty"><BriefcaseBusiness size={26}/><span>No holdings run yet</span></div></Panel>}
-        <footer><span>Momentum Lab</span><span>NSE equities · Research and backtesting</span></footer>
+        <footer><span>Momentum Lab</span><span>Research and backtesting on NSE equities</span></footer>
       </div>
     </main>
     <Settings open={settings} close={() => setSettings(false)} draft={draft} update={update} params={params} setParams={setParams} config={config}/>
