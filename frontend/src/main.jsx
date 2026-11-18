@@ -2,18 +2,25 @@ import React, { useEffect, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Activity, ArrowDownToLine, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3,
-  BriefcaseBusiness, CalendarDays, ChevronDown, CircleHelp, Database, FileSpreadsheet,
+  BookOpen, BriefcaseBusiness, CalendarDays, ChevronDown, CircleHelp, Database, FileSpreadsheet,
   Layers3, LineChart, Menu, Play, Settings2, TrendingUp, Upload, X,
 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart as Chart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import './style.css'
 import { streamlitRequest } from './streamlit.js'
+import Manual from './manual.jsx'
 
 const INDEXES = ['Nifty 50', 'Nifty 100', 'Nifty LargeMidcap 250', 'Nifty Smallcap 250', 'Nifty 500',
   'Nifty Microcap 250', 'Nifty Total Market', 'Quality Stocks']
 const PARAMS = { lookback: 10, skip: 2, top_n: 10, threshold: 20, ema_span: 12, f1: true,
   f2: false, max_ext: .4, f3: true, min_cr: .5, low_cr_action: 'pending', exit_ema: true,
   exit_sl: false, sl_pct: .2, exit_ts: false, ts_pct: .25, capital: 1000000, cash_ret: 0 }
+const VIEWS = { backtest: 'Backtest', present: 'Present holdings', rules: 'Rules' }
+const HERO = {
+  backtest: ['Strategy backtest', 'Test monthly momentum rules against your stock universe and NSE benchmarks.'],
+  present: ['Present holdings', 'Review your portfolio, current ranks, and pending orders.'],
+  rules: ['Strategy rules', 'Every rule the screener applies, and the reasoning behind each one.'],
+}
 const PALETTE = { Strategy: '#087d61', 'Nifty 50': '#8d9d96', 'Nifty 500': '#c49549', 'Equal-weight universe': '#788ab8' }
 const DEMO_SERIES = [100, 102, 98, 105, 110, 109, 117, 114, 124, 128, 123, 134, 139, 136, 143, 151, 147, 155, 159, 153, 166, 172, 178]
 const DEMO_GROWTH = DEMO_SERIES.map((value, i) => ({
@@ -214,6 +221,7 @@ function App() {
       <nav>
         <button type="button" className={mode === 'backtest' ? 'selected' : ''} onClick={() => switchMode('backtest')}><BarChart3 size={19}/>Backtest<ArrowRight className="nav-arrow" size={15}/></button>
         <button type="button" className={mode === 'present' ? 'selected' : ''} onClick={() => switchMode('present')}><BriefcaseBusiness size={19}/>Present holdings<ArrowRight className="nav-arrow" size={15}/></button>
+        <button type="button" className={mode === 'rules' ? 'selected' : ''} onClick={() => switchMode('rules')}><BookOpen size={19}/>Rules<ArrowRight className="nav-arrow" size={15}/></button>
       </nav>
       <div className="nav-label secondary">CONFIGURATION</div>
       <nav><button type="button" onClick={() => { setSettings(true); setMobileNav(false) }}><Settings2 size={19}/>Strategy settings</button></nav>
@@ -222,30 +230,30 @@ function App() {
 
     <main>
       <header className="topbar"><div className="breadcrumb"><button type="button" className="icon-button mobile-menu" aria-label="Open navigation" onClick={() => setMobileNav(true)}><Menu size={20}/></button>
-        <span>Workspace</span><span className="slash">/</span><strong>{mode === 'backtest' ? 'Backtest' : 'Present holdings'}</strong></div>
+        <span>Workspace</span><span className="slash">/</span><strong>{VIEWS[mode]}</strong></div>
         <button type="button" className="secondary-button small" onClick={() => setSettings(true)}><Settings2 size={16}/> Settings</button></header>
       <div className="content">
         <section className="hero">
           <div className="hero-copy"><div className="hero-label"><span/> RELATIVE MOMENTUM</div>
-            <h1>{mode === 'backtest' ? 'Strategy backtest' : 'Present holdings'}</h1>
-            <p>{mode === 'backtest' ? 'Test monthly momentum rules against your stock universe and NSE benchmarks.' : 'Review your portfolio, current ranks, and pending orders.'}</p>
+            <h1>{HERO[mode][0]}</h1>
+            <p>{HERO[mode][1]}</p>
           </div>
           <div className="hero-mark" aria-hidden="true"><LineChart size={136} strokeWidth={.65}/></div>
           <div className="hero-badge"><CalendarDays size={15}/><span>Latest completed month<strong>{month(config.latest)}</strong></span></div>
         </section>
 
-        <form className="controls" onSubmit={submit}>
+        {mode !== 'rules' && <form className="controls" onSubmit={submit}>
           <Field label="Stock universe"><Select value={draft.index} onChange={index => update({ index })}>{config.indices.map(index => <option key={index}>{index}</option>)}</Select></Field>
           <Field label="First month held"><input aria-label="First month held" required type="month" value={draft.first} onChange={e => update({ first: e.target.value })}/></Field>
           {mode === 'backtest' && <Field label="Last month"><input aria-label="Last month" required type="month" value={draft.last} max={config.latest} onChange={e => update({ last: e.target.value })}/></Field>}
           <button className="primary run" disabled={!!loading} type="submit"><Play size={16} fill="currentColor"/>{loading === mode ? 'Running…' : mode === 'backtest' ? 'Run backtest' : 'Show holdings'}</button>
           {draft.history && <div className="attached"><FileSpreadsheet size={15}/> Constituent history · {draft.historyName}</div>}
-        </form>
+        </form>}
         {loading && <div className="notice" role="status"><Activity size={17}/> Calculating strategy results. The first data download may take a few minutes.</div>}
         {error && <div className="notice error" role="alert">{error}</div>}
         {result?.notices?.map(message => <div className="notice" key={message}><CircleHelp size={16}/>{message}</div>)}
 
-        {mode === 'backtest' ? <>
+        {mode === 'rules' ? <Manual params={params} draft={draft}/> : mode === 'backtest' ? <>
           <div className="section-header">
             <div><h2>Performance overview</h2><p>{demo ? 'Illustrative preview' : [result.index, month(result.range[0]) + ' – ' + month(result.range[1])].join(' · ')}</p></div>
             {!demo && <div className="overview-actions">
