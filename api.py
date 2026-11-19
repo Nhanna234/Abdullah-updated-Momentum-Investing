@@ -86,6 +86,9 @@ def growth_report(vals, pos, bench, ew, rate):
     curves = curves.dropna(axis=1, how="any")
     curves = curves / curves.iloc[0] * 100
     dd = curves / curves.cummax() - 1
+    # Trailing 12-month return. The first 12 months have no prior year to compare
+    # against, so they are dropped rather than reported as zero.
+    rolling = (curves / curves.shift(12) - 1).dropna(how="all")
     stats = pd.DataFrame({name: e.perf_stats(curves[name], rate) for name in curves})
     relative = pd.DataFrame({name: e.relative_stats(curves["Strategy"], curves[name])
                              for name in curves if name != "Strategy"})
@@ -93,9 +96,11 @@ def growth_report(vals, pos, bench, ew, rate):
     monthly = vals.assign(Return=vals.Value.pct_change(), Exposure=1-vals.Cash/vals.Value)
     monthly.index = monthly.index.astype(str)
     curves.index = dd.index = curves.index.astype(str)
+    rolling.index = rolling.index.astype(str)
     return {
         "growth": records(curves.rename_axis("Month").reset_index()),
         "drawdown": records(dd.rename_axis("Month").reset_index()),
+        "rolling": records(rolling.rename_axis("Month").reset_index()),
         "monthly": records(monthly.rename_axis("Month").reset_index()),
         "metrics": records(performance.reset_index()),
         "tradeMetrics": records(pd.Series(e.trade_stats(pos, vals), name="Value").rename_axis("Metric").reset_index()),

@@ -5,7 +5,7 @@ import {
   BookOpen, BriefcaseBusiness, CalendarDays, ChevronDown, CircleHelp, Database, FileSpreadsheet,
   Layers3, LineChart, Menu, Play, Settings2, TrendingUp, Upload, X,
 } from 'lucide-react'
-import { CartesianGrid, Line, LineChart as Chart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Line, LineChart as Chart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import './style.css'
 import { streamlitRequest } from './streamlit.js'
 import Manual from './manual.jsx'
@@ -33,6 +33,9 @@ const DEMO = {
   growth: DEMO_GROWTH,
   drawdown: DEMO_GROWTH.map((r, i) => ({ Month: r.Month, ...Object.fromEntries(
     Object.keys(PALETTE).filter(key => key in r).map(key => [key, r[key] / Math.max(...DEMO_GROWTH.slice(0, i + 1).map(p => p[key])) - 1]),
+  ) })),
+  rolling: DEMO_GROWTH.slice(12).map((r, i) => ({ Month: r.Month, ...Object.fromEntries(
+    Object.keys(PALETTE).filter(key => key in r).map(key => [key, r[key] / DEMO_GROWTH[i][key] - 1]),
   ) })),
   metrics: [{ Metric: 'Total return', Strategy: .78, 'Nifty 50': .31, 'Nifty 500': .39 },
     { Metric: 'CAGR', Strategy: .3702, 'Nifty 50': .1587, 'Nifty 500': .1967 },
@@ -110,22 +113,31 @@ function Panel({ title, hint, children }) {
   return <section className="panel"><div className="panel-head"><div><h2>{title}</h2>{hint && <p>{hint}</p>}</div></div>{children}</section>
 }
 
+const CHART_TABS = { growth: 'Growth', drawdown: 'Drawdown', rolling: 'Rolling 12M' }
+const CHART_TITLES = { growth: 'Growth of ₹100', drawdown: 'Drawdown', rolling: 'Rolling 12-month return' }
+const CHART_HINTS = {
+  growth: 'Month-end portfolio performance and benchmarks',
+  drawdown: 'Decline from each series own running peak',
+  rolling: 'Return over the trailing twelve months, so every point is one full year of holding',
+}
+
 function PerformanceChart({ report, demo }) {
   const [kind, setKind] = useState('growth')
   const [hidden, setHidden] = useState([])
   const rows = report[kind] || []
   const keys = Object.keys(PALETTE).filter(key => key in (rows[0] || {}))
-  const label = kind === 'growth' ? 'Growth of ₹100' : 'Drawdown'
+  const money = kind === 'growth'
   return <section className="panel chart-panel">
-    <div className="panel-head"><div><h2>{label}</h2><p>{demo ? 'Illustrative data, run a backtest to see your results' : 'Month-end portfolio performance and benchmarks'}</p></div>
-      <div className="segmented">{['growth', 'drawdown'].map(key => <button type="button" key={key} className={kind === key ? 'active' : ''} onClick={() => setKind(key)}>{key === 'growth' ? 'Growth' : 'Drawdown'}</button>)}</div></div>
+    <div className="panel-head"><div><h2>{CHART_TITLES[kind]}</h2><p>{demo ? 'Illustrative data, run a backtest to see your results' : CHART_HINTS[kind]}</p></div>
+      <div className="segmented">{Object.entries(CHART_TABS).map(([key, text]) => <button type="button" key={key} className={kind === key ? 'active' : ''} onClick={() => setKind(key)}>{text}</button>)}</div></div>
     <div className="legend">{keys.map(key => <button type="button" key={key} aria-pressed={!hidden.includes(key)} className={hidden.includes(key) ? 'muted' : ''} onClick={() => setHidden(old => old.includes(key) ? old.filter(k => k !== key) : [...old, key])}><i style={{ background: PALETTE[key] }}/>{key}</button>)}</div>
     <div className="plot"><ResponsiveContainer width="100%" height="100%">
       <Chart data={rows} margin={{ left: -12, top: 14, right: 20, bottom: 4 }}>
         <CartesianGrid stroke="#E6E8E2" vertical={false} strokeDasharray="3 4"/>
         <XAxis dataKey="Month" tickFormatter={month} tickLine={false} axisLine={false} minTickGap={34} tick={{fill:'#636A6D',fontSize:11,fontFamily:'IBM Plex Mono'}} tickMargin={12}/>
-        <YAxis tickFormatter={kind === 'drawdown' ? pct : v => '₹' + num(v, 0)} tickLine={false} axisLine={false} tick={{fill:'#636A6D',fontSize:11,fontFamily:'IBM Plex Mono'}} width={64} domain={kind === 'drawdown' ? ['auto', 0] : ['auto','auto']}/>
-        <Tooltip labelFormatter={month} formatter={value => kind === 'growth' ? '₹' + num(value) : pct(value)} contentStyle={{border:'1px solid #D3D6CF',borderRadius:3,fontFamily:'IBM Plex Mono',fontSize:12}}/>
+        <YAxis tickFormatter={money ? v => '₹' + num(v, 0) : v => pct(v)} tickLine={false} axisLine={false} tick={{fill:'#636A6D',fontSize:11,fontFamily:'IBM Plex Mono'}} width={64} domain={kind === 'drawdown' ? ['auto', 0] : ['auto','auto']}/>
+        <Tooltip labelFormatter={month} formatter={value => money ? '₹' + num(value) : pct(value, true)} contentStyle={{border:'1px solid #D3D6CF',borderRadius:3,fontFamily:'IBM Plex Mono',fontSize:12}}/>
+        {kind === 'rolling' && <ReferenceLine y={0} stroke="#16191B" strokeWidth={1}/>}
         {keys.filter(key => !hidden.includes(key)).map(key => <Line key={key} type="linear" dataKey={key} stroke={PALETTE[key]} strokeWidth={key === 'Strategy' ? 3 : 2} dot={false} activeDot={{r:4}} isAnimationActive={false}/>)}
       </Chart>
     </ResponsiveContainer></div>
