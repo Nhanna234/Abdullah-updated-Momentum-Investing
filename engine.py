@@ -302,7 +302,6 @@ def run_strategy(D, M, universe_at, months, P, cost, trade_last=False):
                 "Weight": marked[s] / book if book else 0.0,
                 "Return": (px[s] / h["mark"] - 1) if h["mark"] else None,
                 "Value": marked[s], "Entry price": h["entry"], "Close": px[s],
-                "Entered this month": h["mark"] != px[s] and h["mark"] == h["entry"],
             })
             h["mark"] = px[s]
 

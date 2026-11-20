@@ -179,8 +179,10 @@ def run(body):
     benchmark, sources = e.load_benchmarks(start, end)
     ew = e.ew_universe_returns(M, universe, months)
     industry = dict(zip(const["Symbol"], const["Industry"])) if "Industry" in const else {}
-    held = [{**row, "Industry": industry.get(row["Symbol"]) or ""}
-            for row in net_state.get("holds_log", [])]
+    # Through records() like every other payload: Streamlit marshals component
+    # arguments with a bare json.dumps, which rejects numpy scalars.
+    held = records(pd.DataFrame([{**row, "Industry": industry.get(row["Symbol"]) or ""}
+                                 for row in net_state.get("holds_log", [])]))
     return {"index": index, "notices": notices, "sources": sources, "settings": p,
             "net": growth_report(net, net_pos, benchmark, ew, rate),
             "gross": growth_report(gross, gross_pos, benchmark, ew, rate),
