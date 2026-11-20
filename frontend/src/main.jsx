@@ -46,7 +46,9 @@ const pct = (n, signed = false) => Number.isFinite(n) ? (signed && n > 0 ? '+' :
 const num = (n, digits = 2) => Number.isFinite(n) ? n.toLocaleString('en-IN', { maximumFractionDigits: digits }) : '—'
 const inr = n => Number.isFinite(n) ? '₹' + num(n, 0) : '—'
 const month = value => value ? new Date(value + '-01T00:00:00Z').toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—'
-const isPercent = /return|drawdown|volatility|cash|exposure|expectancy|extension|weight|win rate|avg win|avg loss|positive months|months beating|alpha/i
+// Metrics held as fractions, so the table renders them as percentages. "Signal ext"
+// is the trade log's name for Extension; best and worst month are monthly returns.
+const isPercent = /return|cagr|drawdown|volatility|cash|exposure|expectancy|extension|signal ext|weight|win rate|avg win|avg loss|best month|worst month|positive months|months beating|alpha/i
 const format = (value, key) => value == null ? '—' : typeof value === 'number' ? (key === 'Cash' ? inr(value) : isPercent.test(key) ? pct(value) : num(value)) : String(value).replace(/T00:00:00\.000$/, '')
 
 async function request(path, body, signal) {
