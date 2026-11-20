@@ -220,3 +220,46 @@ footer{color:var(--ink-soft);display:flex;justify-content:space-between;gap:12px
   .ladder .wt{display:none}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ---- monthly returns calendar and the month's holdings ---- */
+.monthly-split{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);gap:14px;align-items:start}
+.monthly-left{display:flex;flex-direction:column;gap:14px;min-width:0}
+.calendar table{border-collapse:separate;border-spacing:2px;width:100%;margin:-2px}
+.calendar th{font:500 10.5px var(--sans);color:var(--ink-mid);padding:0 0 4px;text-align:left}
+.calendar thead th.num,.calendar td.num{text-align:center}
+.calendar tbody th{font:600 12px var(--mono);color:var(--ink);text-align:left;padding-right:6px;white-space:nowrap}
+.calendar td{padding:0}
+.calendar .part{color:var(--ink-soft)}
+.calendar .cell{width:100%;border:1px solid transparent;border-radius:2px;background:none;
+  font:500 11px var(--mono);color:var(--ink);padding:6px 2px;font-variant-numeric:tabular-nums}
+.calendar .cell:hover{border-color:var(--ink)}
+.calendar .cell.picked{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.calendar td.blank{background:repeating-linear-gradient(135deg,transparent,transparent 4px,var(--rule-soft) 4px,var(--rule-soft) 5px)}
+.calendar td strong,.calendar td.bench{font:600 11.5px var(--mono);padding:0 4px;font-variant-numeric:tabular-nums}
+.calendar td.bench{color:var(--ink-mid);font-weight:500}
+.calendar-note{font-size:11.5px;color:var(--ink-mid);margin-top:10px;line-height:1.5}
+
+.stepper{display:flex;gap:4px;flex-shrink:0}
+.stepper button{width:26px;height:26px;display:grid;place-items:center;background:none;
+  border:1px solid var(--rule);border-radius:2px;color:var(--ink)}
+.stepper button:hover:not(:disabled){border-color:var(--ink)}
+.stepper button:disabled{opacity:.35;cursor:not-allowed}
+
+table.held{width:100%;border-collapse:collapse;font-size:12.5px}
+table.held th{text-align:left;font:500 10.5px var(--sans);color:var(--ink-mid);
+  padding-bottom:6px;border-bottom:1px solid var(--ink)}
+table.held th.num,table.held td.num{text-align:right}
+table.held td{padding:7px 8px 7px 0;border-bottom:1px solid var(--rule-soft);vertical-align:middle}
+table.held td:last-child{padding-right:0}
+table.held td strong{display:block;font:600 12.5px var(--mono)}
+table.held td small{display:block;font-size:10.5px;color:var(--ink-mid);margin-top:1px}
+table.held td.num{font:500 12px var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.weight{display:inline-block;width:88px;height:7px;background:var(--rule-soft);border-radius:1px;
+  overflow:hidden;vertical-align:middle;margin-right:8px}
+.weight span{display:block;height:100%;background:var(--ink)}
+table.held em{font:500 11.5px var(--mono);font-style:normal;color:var(--ink);font-variant-numeric:tabular-nums}
+
+@media (max-width:1100px){
+  .monthly-split{grid-template-columns:1fr}
+  .weight{width:64px}
+}

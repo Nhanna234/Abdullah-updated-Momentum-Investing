@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import {
   Activity, ArrowDownToLine, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3,
-  BookOpen, BriefcaseBusiness, CalendarDays, ChevronDown, CircleHelp, Database, FileSpreadsheet,
+  BookOpen, BriefcaseBusiness, CalendarDays, ChevronDown, ChevronLeft, ChevronRight,
+  CircleHelp, Database, FileSpreadsheet,
   Layers3, LineChart, Menu, Play, Settings2, TrendingUp, Upload, X,
 } from 'lucide-react'
 import { CartesianGrid, Line, LineChart as Chart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
@@ -181,6 +182,120 @@ function Settings({ open, close, draft, update, params, setParams, config }) {
   </aside></div>
 }
 
+const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const shortMonth = value => value
+  ? MONTH_NAMES[Number(value.slice(5, 7)) - 1] + '-' + value.slice(2, 4)
+  : '—'
+
+/** Month-on-month change of every series in the growth curve. */
+function monthlyReturns(growth) {
+  const out = []
+  for (let i = 1; i < growth.length; i++) {
+    const row = { Month: growth[i].Month }
+    for (const key of Object.keys(growth[i])) {
+      if (key === 'Month') continue
+      const before = growth[i - 1][key], after = growth[i][key]
+      row[key] = Number.isFinite(before) && Number.isFinite(after) && before !== 0 ? after / before - 1 : null
+    }
+    out.push(row)
+  }
+  return out
+}
+
+const compound = values => values.reduce((acc, r) => Number.isFinite(r) ? acc * (1 + r) : acc, 1) - 1
+
+/** Background tint for a return cell, scaled against the largest move on screen. */
+function tint(value, peak) {
+  if (!Number.isFinite(value) || !peak) return undefined
+  const weight = Math.min(1, Math.abs(value) / peak)
+  const alpha = (0.07 + 0.3 * weight).toFixed(3)
+  return { background: value >= 0 ? `rgba(11,107,69,${alpha})` : `rgba(163,43,28,${alpha})` }
+}
+
+function MonthlyGrid({ rows, benchmark, picked, onPick }) {
+  const byMonth = Object.fromEntries(rows.map(r => [r.Month, r]))
+  const years = [...new Set(rows.map(r => r.Month.slice(0, 4)))]
+  const peak = Math.max(...rows.map(r => Math.abs(r.Strategy || 0)), 0.01)
+  return <div className="calendar">
+    <table>
+      <thead><tr><th>Year</th>
+        {MONTH_LETTERS.map((letter, i) => <th key={i} className="num">{letter}</th>)}
+        <th className="num">Year</th><th className="num">{benchmark}</th></tr></thead>
+      <tbody>{years.map(year => {
+        const months = Array.from({ length: 12 }, (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`)
+        const present = months.filter(m => byMonth[m])
+        return <tr key={year}>
+          <th>{year}{present.length < 12 && <span className="part">*</span>}</th>
+          {months.map(key => {
+            const row = byMonth[key]
+            if (!row) return <td key={key} className="num blank"/>
+            return <td key={key} className="num">
+              <button type="button" style={tint(row.Strategy, peak)}
+                className={'cell' + (picked === key ? ' picked' : '')}
+                onClick={() => onPick(key)} aria-label={`${shortMonth(key)} holdings`}>
+                {Number.isFinite(row.Strategy) ? (row.Strategy * 100).toFixed(1) : '—'}
+              </button></td>
+          })}
+          <td className="num"><strong className={compound(present.map(m => byMonth[m].Strategy)) >= 0 ? 'up' : 'down'}>
+            {pct(compound(present.map(m => byMonth[m].Strategy)), true)}</strong></td>
+          <td className="num bench">{pct(compound(present.map(m => byMonth[m][benchmark])), true)}</td>
+        </tr>
+      })}</tbody>
+    </table>
+    <p className="calendar-note">Percent return each month, after costs. Click a month to see what was held. Years marked <span className="part">*</span> are part-years.</p>
+  </div>
+}
+
+function MonthHoldings({ month: key, rows, slots, months, onPick }) {
+  const held = [...rows].sort((a, b) => (b.Weight || 0) - (a.Weight || 0))
+  const invested = held.reduce((sum, r) => sum + (r.Weight || 0), 0)
+  const widest = Math.max(...held.map(r => r.Weight || 0), 0.01)
+  const at = months.indexOf(key)
+  const previous = months[at - 1], next = months[at + 1]
+  return <section className="panel holdings-month">
+    <div className="panel-head">
+      <div><h2>Held through {shortMonth(key)}</h2>
+        <p>{held.length} of {slots} slots, {pct(1 - invested)} in cash. Positions were set at the{' '}
+        {shortMonth(months[at - 1] || key)} close; a buy-stop could also fill during the month.</p></div>
+      <div className="stepper">
+        <button type="button" disabled={!previous} onClick={() => onPick(previous)} aria-label="Previous month"><ChevronLeft size={16}/></button>
+        <button type="button" disabled={!next} onClick={() => onPick(next)} aria-label="Next month"><ChevronRight size={16}/></button>
+      </div>
+    </div>
+    {held.length ? <table className="held">
+      <thead><tr><th>Stock</th><th>Weight at month-end</th><th className="num">Return in month</th></tr></thead>
+      <tbody>{held.map(row => <tr key={row.Symbol}>
+        <td><strong>{row.Symbol}</strong>{row.Industry && <small>{row.Industry}</small>}</td>
+        <td><div className="weight"><span style={{ width: `${(row.Weight / widest) * 100}%` }}/></div>
+          <em>{pct(row.Weight)}</em></td>
+        <td className={'num ' + (row.Return >= 0 ? 'up' : 'down')}>{pct(row.Return, true)}</td>
+      </tr>)}</tbody>
+    </table> : <div className="empty"><BriefcaseBusiness size={24}/><span>Nothing held in this month</span></div>}
+  </section>
+}
+
+function MonthlyResults({ report, held, slots }) {
+  const rows = useMemo(() => monthlyReturns(report.growth || []), [report])
+  const months = rows.map(r => r.Month)
+  const [picked, setPicked] = useState(null)
+  const current = picked && months.includes(picked) ? picked : months[months.length - 1]
+  const benchmark = ['Nifty 50', 'Nifty 500'].find(name => rows[0] && name in rows[0]) || 'Nifty 50'
+  const forMonth = (held || []).filter(r => r.Month === current)
+  if (!rows.length) return <Panel title="Monthly results"><Table rows={report.monthly}/></Panel>
+  return <div className="monthly-split">
+    <div className="monthly-left">
+      <section className="panel">
+        <div className="panel-head"><div><h2>Monthly returns</h2>
+          <p>Every month of the backtest, with the calendar-year total beside it.</p></div></div>
+        <MonthlyGrid rows={rows} benchmark={benchmark} picked={current} onPick={setPicked}/>
+      </section>
+      <details className="panel details"><summary>Monthly values</summary><Table rows={report.monthly}/></details>
+    </div>
+    <MonthHoldings month={current} rows={forMonth} slots={slots} months={months} onPick={setPicked}/>
+  </div>
+}
+
 function App() {
   const [config, setConfig] = useState({ indices: INDEXES, latest: '2026-10' })
   const [mode, setMode] = useState('present')
@@ -254,7 +369,7 @@ function App() {
   const switchMode = next => { setMode(next); setError(''); setMobileNav(false) }
   const renderAnalysis = () => {
     if (section === 'Trades') return <Panel title="Trade log" hint={report.trades && report.trades.length + ' entries'}><Table rows={report.trades}/></Panel>
-    if (section === 'Monthly') return <Panel title="Monthly results"><Table rows={report.monthly}/></Panel>
+    if (section === 'Monthly') return <MonthlyResults report={report} held={result?.held} slots={params.top_n}/>
     if (section === 'Decisions') return <Panel title="Candidate decisions"><Table rows={result?.decisions}/></Panel>
     return <Panel title="Performance comparison" hint="Strategy and benchmark returns, risk, and relative statistics"><Table rows={report.metrics}/></Panel>
   }

@@ -175,13 +175,16 @@ def run(body):
         return {"index": index, "notices": notices, **present_report(
             D, M, vals, pos, dec, state, months[-1], universe(months[-1]), const, cost)}
     gross, gross_pos, decisions, _ = e.run_strategy(D, M, universe, months, p, 0.0)
-    net, net_pos, _, _ = e.run_strategy(D, M, universe, months, p, cost)
+    net, net_pos, _, net_state = e.run_strategy(D, M, universe, months, p, cost)
     benchmark, sources = e.load_benchmarks(start, end)
     ew = e.ew_universe_returns(M, universe, months)
+    industry = dict(zip(const["Symbol"], const["Industry"])) if "Industry" in const else {}
+    held = [{**row, "Industry": industry.get(row["Symbol"]) or ""}
+            for row in net_state.get("holds_log", [])]
     return {"index": index, "notices": notices, "sources": sources, "settings": p,
             "net": growth_report(net, net_pos, benchmark, ew, rate),
             "gross": growth_report(gross, gross_pos, benchmark, ew, rate),
-            "decisions": records(decisions)}
+            "held": held, "decisions": records(decisions)}
 
 
 def export_report(body):

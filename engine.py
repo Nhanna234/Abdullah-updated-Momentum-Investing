@@ -257,6 +257,7 @@ def run_strategy(D, M, universe_at, months, P, cost, trade_last=False):
     cash, reserved = float(P["capital"]), 0.0
     holdings, pending = {}, []
     positions, decisions_log, values, buys_value = [], [], [], []
+    holds_log = []
     day_p = D["Close"].index.to_period("M")
 
     for i, t in enumerate(months):
@@ -274,7 +275,7 @@ def run_strategy(D, M, universe_at, months, P, cost, trade_last=False):
                     gap = pd.notna(op) and op > p["Trigger"]
                     fill = op if gap else p["Trigger"]
                     holdings[s] = {"qty": p["Alloc"] * (1 - cost) / fill, "pos": len(positions),
-                                   "entry": fill, "peak": fill}
+                                   "entry": fill, "peak": fill, "mark": fill}
                     positions.append({**p["info"], "Entry date": day, "Entry price": fill,
                                       "Entry type": "buy-stop (gap open)" if gap else "buy-stop",
                                       "Invested": p["Alloc"]})
@@ -289,6 +290,21 @@ def run_strategy(D, M, universe_at, months, P, cost, trade_last=False):
         px = Cf.loc[t]
         for s, h in holdings.items():
             h["peak"] = max(h["peak"], px[s])
+
+        # What was held THROUGH month t, snapshotted before this month's trades.
+        # "mark" is the position's price at the start of the month: last month's
+        # close, or the fill price for a buy-stop that filled during the month.
+        marked = {s: h["qty"] * px[s] for s, h in holdings.items()}
+        book = cash + reserved + sum(marked.values())
+        for s, h in holdings.items():
+            holds_log.append({
+                "Month": str(t), "Symbol": s,
+                "Weight": marked[s] / book if book else 0.0,
+                "Return": (px[s] / h["mark"] - 1) if h["mark"] else None,
+                "Value": marked[s], "Entry price": h["entry"], "Close": px[s],
+                "Entered this month": h["mark"] != px[s] and h["mark"] == h["entry"],
+            })
+            h["mark"] = px[s]
 
         if i == len(months) - 1 and not trade_last:
             values.append((t, cash + reserved + sum(h["qty"] * px[s] for s, h in holdings.items()),
@@ -317,7 +333,7 @@ def run_strategy(D, M, universe_at, months, P, cost, trade_last=False):
                 if d["Decision"] == "BUY at close":
                     cash -= per_slot
                     holdings[s] = {"qty": per_slot * (1 - cost) / px[s], "pos": len(positions),
-                                   "entry": px[s], "peak": px[s]}
+                                   "entry": px[s], "peak": px[s], "mark": px[s]}
                     positions.append({**info, "Entry date": t.to_timestamp(how="end").normalize(),
                                       "Entry price": px[s], "Entry type": "close", "Invested": per_slot})
                     bought += per_slot
@@ -341,7 +357,7 @@ def run_strategy(D, M, universe_at, months, P, cost, trade_last=False):
         pos["Months held"] = ((pd.to_datetime(pos["Exit date"]) - pd.to_datetime(pos["Entry date"])).dt.days / 30.44).round(1)
     vals = pd.DataFrame(values, columns=["Month", "Value", "Cash", "Holdings"]).set_index("Month")
     vals["Bought"] = buys_value
-    state = {"holdings": holdings, "pending": pending}
+    state = {"holdings": holdings, "pending": pending, "holds_log": holds_log}
     return vals, pos, pd.DataFrame(decisions_log), state
 
 def ew_universe_returns(M, universe_at, months) -> pd.Series:
