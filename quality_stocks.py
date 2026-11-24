@@ -114,6 +114,21 @@ def load_quality_history():
     return {quarter: sorted(symbols) for quarter, symbols in by_quarter.items()}
 
 
+def load_quality_sectors():
+    """Broad sector per symbol from the Chartink history, latest capture winning.
+
+    Quality Stocks.csv carries symbols only, so without this the lending filter has no
+    sector to work from and would never look at a Quality Stocks name."""
+    sectors = {}
+    with CHARTINK_HISTORY.open(encoding="utf-8-sig", newline="") as source:
+        rows = sorted(csv.DictReader(source),
+                      key=lambda row: datetime.strptime(row["Date"], "%d-%m-%Y"))
+    for row in rows:
+        if row.get("Sector"):
+            sectors[row["Symbol"].strip().upper()] = row["Sector"].strip()
+    return sectors
+
+
 def quality_symbols_for(holding_date, history):
     quarter = quarter_start(holding_date)
     if quarter not in history:

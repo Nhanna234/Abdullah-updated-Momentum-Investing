@@ -5,3 +5,4 @@ frontend/dist/
 *.tmp
 .env
 .env.*
+.basic-industry.json

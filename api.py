@@ -11,10 +11,17 @@ from urllib.parse import urlsplit
 import pandas as pd
 
 import engine as e
-from quality_stocks import QUALITY_CSV, load_quality_history, quality_symbols_for, refresh_if_due
+import lender_filter as lf
+from quality_stocks import (QUALITY_CSV, load_quality_history, load_quality_sectors,
+                            quality_symbols_for, refresh_if_due)
 
-DIST = Path(__file__).resolve().parent / "frontend" / "dist"
+ROOT = Path(__file__).resolve().parent
+DIST = ROOT / "frontend" / "dist"
+# NSE basic-industry labels, kept between runs so NSE is asked only about new symbols.
+INDUSTRY_CACHE = ROOT / ".basic-industry.json"
 INDEXES = [*e.INDEX_FILES, "Quality Stocks"]
+# The sidebar's universe filters, kept apart from the strategy parameters above.
+FILTERS = dict(exclude_lenders=True, exclude_financials=False, omit="", keep="")
 DEFAULTS = dict(lookback=10, skip=2, top_n=10, threshold=20, ema_span=12, f1=True,
                 f2=False, max_ext=.4, f3=True, min_cr=.5, low_cr_action="pending",
                 exit_ema=True, exit_sl=False, sl_pct=.2, exit_ts=False, ts_pct=.25,
@@ -27,6 +34,47 @@ def records(frame):
 
 def input_csv(text):
     return io.StringIO(text.lstrip("\ufeff"))
+
+
+def exclusions(body, const, quality_sectors, notices):
+    """Which symbols the universe leaves out, and why.
+
+    Three independent controls, matching the sidebar:
+      exclude_lenders    banks, NBFCs, housing finance and financial institutions, decided by
+                         lender_filter from NSE's basic industry with name rules as a fallback
+      exclude_financials every remaining financial company as well (exchanges, AMCs, insurers)
+      omit / keep        the user's own always-exclude and never-exclude symbols, which win
+    """
+    always, never = lf.parse_symbols(body.get("omit", "")), lf.parse_symbols(body.get("keep", ""))
+    symbols = const["Symbol"].tolist()
+    pooled = e.load_symbol_names()
+    names = {s: n or pooled.get(s, "") for s, n in zip(const["Symbol"], const["Company Name"])}
+    sectors = dict(zip(const["Symbol"], const["Industry"]))
+    if quality_sectors:                       # Quality Stocks carries no industry of its own
+        sectors = {s: sectors.get(s) or quality_sectors.get(s, "") for s in symbols}
+
+    excluded, report = set(always), None
+    if body.get("exclude_lenders", True):
+        nbfc, nbfc_source = e.load_nbfc_index()
+        if not nbfc:
+            notices.append("NSE's Nifty NBFC index was unavailable, so lenders whose names carry no "
+                           "lending word may be missed. Add them under Always exclude.")
+        report = lf.classify(symbols, names, sectors, lf.BasicIndustryCache(str(INDUSTRY_CACHE)),
+                             set(nbfc), always, never)
+        report["nbfcSource"] = nbfc_source
+        excluded |= {row["symbol"] for row in report["excluded"]}
+        if report["nseStatus"] == "blocked" and report["checked"]:
+            notices.append("NSE did not answer, so lending was decided from company names and the "
+                           "NBFC index rather than its basic-industry labels.")
+    if body.get("exclude_financials", False):
+        rest = {s for s in symbols if lf.is_financial_sector(sectors.get(s))} - never
+        excluded |= rest
+        if report is not None:                # keep the panel honest about what actually went
+            moved = [row for row in report["kept"] if row["symbol"] in rest]
+            report["kept"] = [row for row in report["kept"] if row["symbol"] not in rest]
+            report["excluded"] += [{**row, "source": "all financial companies"} for row in moved]
+            report["excluded"].sort(key=lambda row: row["symbol"])
+    return excluded - never, report
 
 
 def load_universe(body, index):
@@ -57,13 +105,7 @@ def load_universe(body, index):
     else:
         notices.append("Imported Chartink snapshots can repaint. Saved live captures apply from the next quarter.")
 
-    industry = const.set_index("Symbol")["Industry"].to_dict()
-    industries = body.get("industries")
-    if industries is None:
-        industries = sorted({name for name in industry.values() if "financ" in str(name).lower()})
-    keep = {e._clean(s) for s in body.get("keep", e.DEFAULT_KEEP).split(",") if s.strip()}
-    blocked = {e._clean(s) for s in body.get("omit", "").split(",") if s.strip()}
-    excluded = ({s for s, label in industry.items() if str(label).strip() in industries} | blocked) - keep
+    excluded, report = exclusions(body, const, load_quality_sectors() if quality else None, notices)
 
     def universe_at(t):
         if history is not None:
@@ -75,7 +117,7 @@ def load_universe(body, index):
             base = const["Symbol"].tolist()
         return [s for s in base if s not in excluded]
 
-    return const, universe_at, quality is not None and history is None, uploaded_symbols, notices
+    return const, universe_at, quality is not None and history is None, uploaded_symbols, notices, report
 
 
 def growth_report(vals, pos, bench, ew, rate):
@@ -159,7 +201,7 @@ def run(body):
     months = list(pd.period_range(first - 1, last, freq="M"))
     if last > latest or len(months) < (1 if present else 3):
         raise ValueError("Choose a valid date range ending in a completed month. Backtests require two holding months.")
-    const, universe, quality, uploaded, notices = load_universe(body, index)
+    const, universe, quality, uploaded, notices, lenders = load_universe(body, index)
     rebalances = months if present else months[:-1]
     symbols = ({symbol for t in rebalances for symbol in universe(t)} if quality else
                set(const["Symbol"]) | set(uploaded))
@@ -172,7 +214,7 @@ def run(body):
     M = e.build_monthly(D, p)
     if present:
         vals, pos, dec, state = e.run_strategy(D, M, universe, months, p, cost, trade_last=True)
-        return {"index": index, "notices": notices, **present_report(
+        return {"index": index, "notices": notices, "lenders": lenders, **present_report(
             D, M, vals, pos, dec, state, months[-1], universe(months[-1]), const, cost)}
     gross, gross_pos, decisions, _ = e.run_strategy(D, M, universe, months, p, 0.0)
     net, net_pos, _, net_state = e.run_strategy(D, M, universe, months, p, cost)
@@ -184,6 +226,7 @@ def run(body):
     held = records(pd.DataFrame([{**row, "Industry": industry.get(row["Symbol"]) or ""}
                                  for row in net_state.get("holds_log", [])]))
     return {"index": index, "notices": notices, "sources": sources, "settings": p,
+            "lenders": lenders,
             "net": growth_report(net, net_pos, benchmark, ew, rate),
             "gross": growth_report(gross, gross_pos, benchmark, ew, rate),
             "held": held, "decisions": records(decisions)}
@@ -203,7 +246,8 @@ def export_report(body):
 
 def dashboard_config():
     return {"indices": INDEXES, "latest": str(e.last_completed_month()),
-            "params": DEFAULTS, "keep": e.DEFAULT_KEEP}
+            "params": DEFAULTS, "filters": FILTERS,
+            "lendingLabels": list(lf.LENDING_LABELS)}
 
 
 class Handler(SimpleHTTPRequestHandler):

@@ -45,18 +45,31 @@ export default function Manual({ params, draft }) {
         <code> YYYY-MM-DD</code>, one ticker per cell). Without that file, past backtests carry look-ahead
         bias, because a stock that joined the index after rallying is treated as if it had always been there.</p>
       <h3>Exclusions</h3>
-      <Rule id="U1" name="Exclude, keep, omit">
-        Three settings filter the universe before anything is ranked. <strong>Exclude industries</strong>{' '}
-        removes every stock whose NSE industry label matches (by default, any industry containing
-        &ldquo;financ&rdquo;, which is the no-lending rule). <strong>Keep anyway</strong> re-admits named
-        tickers despite that. <strong>Also exclude</strong> drops named tickers whatever their industry.
-        An excluded stock is never ranked, so a holding that becomes excluded is sold at the next month-end
-        by rule X1.
+      <Rule id="U1" name="Exclude lending companies" on={draft.excludeLenders !== false}>
+        A company counts as a lender when NSE's <em>basic industry</em> — the most detailed level of its
+        classification — is a public sector bank, private sector bank, other bank, NBFC, housing finance
+        company or financial institution. Insurers, asset managers, brokers, exchanges, depositories, rating
+        agencies, fintechs and holding companies are <em>not</em> lenders and stay in. The label is read from
+        NSE and cached for 30 days; if NSE does not answer, the fall-back is &ldquo;Bank&rdquo; in the company
+        name, membership of NSE's Nifty NBFC index, housing-finance or lending words in the name, and a short
+        list of government financial institutions.
       </Rule>
-      <div className="callout">NSE's industry column is broad: &ldquo;Financial Services&rdquo; covers banks and
-        NBFCs but also exchanges, depositories, AMCs, rating agencies and insurers. That is what the keep-anyway
-        list is for. The Quality Stocks file carries no industry column at all, so on that universe the industry
-        exclusion matches nothing and only the <strong>Also exclude</strong> list applies.</div>
+      <Rule id="U2" name="and all other financial companies" on={draft.excludeFinancials === true}>
+        Off by default. Switched on, it also removes every remaining company in the Financial Services
+        sector — the insurers, AMCs, exchanges and the rest that U1 deliberately keeps.
+      </Rule>
+      <Rule id="U3" name="Always exclude / Never exclude">
+        Your own symbol lists, and they beat everything above. <strong>Always exclude</strong>{' '}
+        drops a stock whatever its industry; <strong>Never exclude</strong> keeps one even if it was
+        classified as a lender. Both are remembered in your browser and apply to the holdings tab and the
+        backtest alike. An excluded stock is never ranked, so a holding that becomes excluded is sold at the
+        next month-end by rule X1.
+      </Rule>
+      <div className="callout">The <strong>Companies left out</strong> panel after each run lists every symbol
+        that was excluded and every financial company that was kept, with the reason and the source for each.
+        If a lender slips through — which happens when both NSE and the NBFC index are unreachable and the
+        company name carries no lending word, as with Tata Capital or Aditya Birla Capital — it will appear in
+        the kept list, and adding it to <strong>Always exclude</strong> settles it permanently.</div>
     </Section>
 
     <Section title="2. Momentum score and ranking" hint="How the leaders are identified">

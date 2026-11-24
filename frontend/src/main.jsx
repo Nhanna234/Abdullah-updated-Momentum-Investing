@@ -163,10 +163,22 @@ function Settings({ open, close, draft, update, params, setParams, config }) {
     {draft.history && <button type="button" className="link-button" onClick={() => update({ history: '', historyName: '' })}>Remove history upload</button>}
     {file('constituents','Override constituent list','CSV with a Symbol column')}
     {draft.constituents && <button type="button" className="link-button" onClick={() => update({ constituents: '', constituentsName: '' })}>Remove override</button>}
-    <div className="setting-grid">
-      <Field label="Exclude industries" wide><input placeholder="Default: financial industries" value={draft.industriesText ?? ''} onChange={e => update({ industriesText: e.target.value })}/></Field>
-      <Field label="Keep anyway (comma-separated tickers)" wide><textarea value={draft.keep ?? config.keep ?? ''} onChange={e => update({ keep: e.target.value })}/></Field>
-      <Field label="Also exclude (comma-separated tickers)" wide><input value={draft.omit || ''} onChange={e => update({ omit: e.target.value })}/></Field>
+    <div className="exclusions">
+      <div className="exclusion-head">
+        <label className="switch"><input type="checkbox" checked={!!draft.excludeLenders}
+          onChange={e => update({ excludeLenders: e.target.checked })}/><span/>Exclude lending companies</label>
+        <label className="check"><input type="checkbox" checked={!!draft.excludeFinancials}
+          onChange={e => update({ excludeFinancials: e.target.checked })}/>and all other financial companies</label>
+      </div>
+      <div className="setting-grid">
+        <Field label="Always exclude (symbols)"><input placeholder="e.g. DIACABS, CUPID, JAIBALAJI"
+          value={draft.omit ?? ''} onChange={e => update({ omit: e.target.value })}/></Field>
+        <Field label="Never exclude (symbols)"><input placeholder="e.g. a company you know does not lend"
+          value={draft.keep ?? ''} onChange={e => update({ keep: e.target.value })}/></Field>
+      </div>
+      <p className="hint">Separate symbols with commas. Your lists are remembered in this browser and apply to
+      both tabs. A lender is a bank, NBFC, housing finance company or financial institution by NSE's own
+      industry classification; insurers, AMCs, brokers, exchanges and holding companies are not.</p>
     </div>
     <h3>Monthly ranking</h3><div className="setting-grid">{number('lookback','Lookback (months)',1,24)}{number('skip','Skip (months)',0,6)}{number('top_n','Max holdings',1,50)}{number('threshold','Hold-zone rank',params.top_n,200)}</div>
     <h3>Entry & exit</h3><div className="setting-grid">{number('ema_span','EMA span (months)',2,36)}{number('max_ext','Max extension (decimal)',.05,1.5,.05)}{number('min_cr','Min closing range',0,1,.05)}
@@ -182,6 +194,49 @@ function Settings({ open, close, draft, update, params, setParams, config }) {
     </div>
     <button type="button" className="primary drawer-done" onClick={close}>Apply settings <ArrowRight size={16}/></button>
   </aside></div>
+}
+
+// The universe filters are remembered per browser and apply to both tabs. Storage can be
+// unavailable or blocked, so every read and write is allowed to fail quietly.
+const FILTER_KEYS = ['excludeLenders', 'excludeFinancials', 'omit', 'keep']
+const FILTER_STORE = 'momentum-lab.filters'
+const FILTER_DEFAULTS = { excludeLenders: true, excludeFinancials: false, omit: '', keep: '' }
+
+function loadFilters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(FILTER_STORE) || '{}')
+    return { ...FILTER_DEFAULTS, ...Object.fromEntries(FILTER_KEYS.map(k => [k, saved[k]]).filter(([, v]) => v !== undefined)) }
+  } catch {
+    return { ...FILTER_DEFAULTS }
+  }
+}
+
+function saveFilters(draft) {
+  try {
+    localStorage.setItem(FILTER_STORE, JSON.stringify(Object.fromEntries(FILTER_KEYS.map(k => [k, draft[k]]))))
+  } catch { /* private browsing, or storage disabled */ }
+}
+
+function LenderSummary({ lenders }) {
+  const [open, setOpen] = useState(false)
+  if (!lenders) return null
+  const { excluded = [], kept = [], nseStatus } = lenders
+  if (!excluded.length && !kept.length) return null
+  return <section className="panel">
+    <div className="panel-head"><div><h2>Companies left out</h2>
+      <p>{excluded.length} excluded, {kept.length} financial companies kept because they do not lend.
+      {nseStatus !== 'ok' && ' NSE did not answer for every symbol, so some were decided from company names.'}</p></div>
+      <button type="button" className="link-button" onClick={() => setOpen(!open)}>{open ? 'Hide my lists' : 'Show my lists'}</button></div>
+    {open && <div className="two-lists">
+      {[['Excluded', excluded], ['Kept', kept]].map(([title, rows]) => <div key={title}>
+        <h4>{title}</h4>
+        {rows.length ? <table className="held"><tbody>{rows.map(row => <tr key={row.symbol}>
+          <td><strong>{row.symbol}</strong>{row.name && <small>{row.name}</small>}</td>
+          <td><em>{row.label}</em><small>{row.source}</small></td>
+        </tr>)}</tbody></table> : <p className="muted">None</p>}
+      </div>)}
+    </div>}
+  </section>
 }
 
 const MONTH_LETTERS = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D']
@@ -301,7 +356,8 @@ function MonthlyResults({ report, held, slots }) {
 function App() {
   const [config, setConfig] = useState({ indices: INDEXES, latest: '2026-10' })
   const [mode, setMode] = useState('present')
-  const [draft, setDraft] = useState({ index: 'Nifty Total Market', first: '2025-01', last: '2026-10', cost: .4, rf: 6.5 })
+  const [draft, setDraft] = useState({ index: 'Nifty Total Market', first: '2025-01', last: '2026-10',
+    cost: .4, rf: 6.5, ...loadFilters() })
   const [params, setParams] = useState(PARAMS)
   const [settings, setSettings] = useState(false)
   const [mobileNav, setMobileNav] = useState(false)
@@ -340,8 +396,10 @@ function App() {
     }
     setLoading(mode)
     try {
+      saveFilters(draft)
       const inputs = { ...draft, mode, params, cost: draft.cost / 100, rf: draft.rf / 100,
-        ...(draft.industriesText !== undefined && { industries: draft.industriesText.split(',').map(s => s.trim()).filter(Boolean) }) }
+        exclude_lenders: !!draft.excludeLenders, exclude_financials: !!draft.excludeFinancials,
+        omit: draft.omit || '', keep: draft.keep || '' }
       const data = await request('run', inputs)
       setResults(old => ({ ...old, [mode]: { ...data, range: [draft.first, mode === 'backtest' ? draft.last : config.latest] } }))
       setSection('Performance')
@@ -412,6 +470,7 @@ function App() {
         {loading && <div className="notice" role="status"><Activity size={17}/> Calculating strategy results. The first data download may take a few minutes.</div>}
         {error && <div className="notice error" role="alert">{error}</div>}
         {result?.notices?.map(message => <div className="notice" key={message}><CircleHelp size={16}/>{message}</div>)}
+        {mode !== 'rules' && <LenderSummary lenders={result?.lenders}/>}
 
         {mode === 'rules' ? <Manual params={params} draft={draft}/> : mode === 'backtest' ? <>
           <div className="section-header">

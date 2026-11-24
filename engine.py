@@ -15,6 +15,8 @@ import yfinance as yf
 
 LOGIC_VERSION = "1.4.0"
 
+# Used only by streamlit_legacy.py. The React app classifies lenders with lender_filter
+# instead, so it needs no rescue list.
 DEFAULT_KEEP = ("360ONE, ABCAPITAL, ABSLAMC, ANANDRATHI, ANGELONE, BSE, BAJAJHLDNG, GROWW, CRISIL, CRAMC, "
                 "CDSL, CHOICEIN, CAMS, GICRE, HDFCAMC, HDFCLIFE, ICICILIFE, ICICIGI, ICICIAMC, IIFLCAPS, IEX, "
                 "KFINTECH, LICI, MOTILALOFS, MCX, NAM-INDIA, NIVABUPA, NUVAMA, POLICYBZR, PINELABS, SBILIFE, "
@@ -32,6 +34,10 @@ INDEX_FILES = {
 
 CONSTITUENT_SNAPSHOTS = Path(__file__).resolve().parent / "constituents"
 CONSTITUENT_SNAPSHOT_DATE = "15 Nov 2026"
+
+# NSE's Nifty NBFC index lists every NBFC in the Nifty Total Market. lender_filter uses it
+# to recognise lenders whose names carry no lending word, such as Tata Capital.
+NBFC_FILES = ("ind_niftynbfclist.csv", "ind_niftynbfc_list.csv")
 
 CONSTITUENT_MIRRORS = ["https://niftyindices.com/IndexConstituent/{f}",
                        "https://www.niftyindices.com/IndexConstituent/{f}",
@@ -92,6 +98,50 @@ def load_constituents(index_name: str) -> tuple[pd.DataFrame, str]:
                 f"bundled NSE snapshot, {CONSTITUENT_SNAPSHOT_DATE}")
     raise RuntimeError("Could not download the constituent list. Upload it from the sidebar.\n"
                        + "\n".join(errors))
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def load_symbol_names() -> dict:
+    """Company name per symbol, pooled from every bundled NSE constituent snapshot.
+
+    Universes that carry symbols only, such as Quality Stocks, borrow names from here so the
+    lending classifier's name rules have something to read."""
+    names = {}
+    for fname in INDEX_FILES.values():
+        snapshot = CONSTITUENT_SNAPSHOTS / fname
+        if not snapshot.is_file():
+            continue
+        try:
+            rows = _parse_constituents(pd.read_csv(snapshot))
+        except Exception:  # noqa: BLE001
+            continue
+        for symbol, name in zip(rows["Symbol"], rows["Company Name"]):
+            if name and symbol not in names:
+                names[symbol] = name
+    return names
+
+
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def load_nbfc_index() -> tuple[tuple[str, ...], str]:
+    """Members of NSE's Nifty NBFC index, for the lending classifier's name-rule fallback.
+
+    Returns an empty tuple when NSE cannot be reached, which only weakens the fallback:
+    NBFCs whose names say "finance" are still caught by the word rules."""
+    for fname in NBFC_FILES:
+        snapshot = CONSTITUENT_SNAPSHOTS / fname
+        if snapshot.is_file():
+            return tuple(_parse_constituents(pd.read_csv(snapshot))["Symbol"]), f"bundled snapshot ({fname})"
+    for fname in NBFC_FILES:
+        for m in CONSTITUENT_MIRRORS:
+            try:
+                r = requests.get(m.format(f=fname), headers={"User-Agent": UA, "Accept": "text/csv,*/*"}, timeout=20)
+                r.raise_for_status()
+                symbols = tuple(_parse_constituents(pd.read_csv(io.StringIO(r.text)))["Symbol"])
+                if symbols:
+                    return symbols, m.format(f=fname)
+            except Exception:  # noqa: BLE001
+                continue
+    return (), "unavailable"
+
 
 def parse_history(file) -> tuple[dict, list[str]]:
     """Report format: each column header is an effective date, values are symbols."""
